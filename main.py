@@ -6,8 +6,8 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 
-BOT_TOKEN = os.environ["BOT_TOKEN"]
-CHAT_ID = os.environ["CHAT_ID"]
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 
 AJAX_URL = "https://petrzalkasportuje.sk/wp-admin/admin-ajax.php"
 EVENT_ID = "10024"
