@@ -19,7 +19,20 @@ STATE_FILE = "known_events.json"
 def send_telegram(text):
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-        json={"chat_id": CHAT_ID, "text": text},
+        json={
+            "chat_id": CHAT_ID,
+            "text": text,
+            "reply_markup": {
+                "inline_keyboard": [
+                    [
+                        {
+                            "text": "🏒 Otvoriť rezerváciu",
+                            "url": "https://petrzalkasportuje.sk/events/arena-drazdiak-korculovanie/"
+                        }
+                    ]
+                ]
+            }
+        },
         timeout=15
     )
 
