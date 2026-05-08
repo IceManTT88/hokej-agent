@@ -2,8 +2,8 @@ import requests
 import time
 import os
 
-BOT_TOKEN = os.environ["BOT_TOKEN"]
-CHAT_ID = os.environ["CHAT_ID"]
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 
 URL = "https://petrzalkasportuje.sk/events/arena-drazdiak-korculovanie/"
 
