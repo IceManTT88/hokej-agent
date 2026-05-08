@@ -1,21 +1,25 @@
 import os
 import time
+import re
 import json
-import hashlib
 import requests
 from bs4 import BeautifulSoup
+from datetime import datetime, timedelta
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
+BOT_TOKEN = os.environ["BOT_TOKEN"]
+CHAT_ID = os.environ["CHAT_ID"]
 
-URL = "https://petrzalkasportuje.sk/events/arena-drazdiak-korculovanie/"
+AJAX_URL = "https://petrzalkasportuje.sk/wp-admin/admin-ajax.php"
+EVENT_ID = "10024"
+
 CHECK_INTERVAL = 300
+DAYS_AHEAD = 45
 STATE_FILE = "known_events.json"
 
-def send_telegram(message):
+def send_telegram(text):
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-        json={"chat_id": CHAT_ID, "text": message},
+        json={"chat_id": CHAT_ID, "text": text},
         timeout=15
     )
 
@@ -28,67 +32,99 @@ def load_known():
 
 def save_known(known):
     with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(list(known), f, ensure_ascii=False, indent=2)
+        json.dump(sorted(list(known)), f, ensure_ascii=False, indent=2)
 
-def make_event_id(text):
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+def get_terms_for_day(date):
+    payload = {
+        "action": "get_event_calendar_available_terms",
+        "event_id": EVENT_ID,
+        "month": date.month,
+        "year": date.year,
+        "day": date.day,
+    }
 
-def fetch_relevant_events():
-    r = requests.get(URL, timeout=20)
+    r = requests.post(AJAX_URL, data=payload, timeout=20)
     r.raise_for_status()
 
     soup = BeautifulSoup(r.text, "html.parser")
-    text = soup.get_text("\n")
+    terms = []
 
-    blocks = []
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    for block in soup.select(".ticket-combined-term"):
+        text = block.get_text(" ", strip=True)
 
-    for i, line in enumerate(lines):
-        if "Hokejka a puk" in line:
-            context = lines[max(0, i-5): i+8]
-            block = "\n".join(context)
+        if "Hokejka a puk - max 20 ľudí" not in text:
+            continue
 
-            # filter max 20 ľudí / kapacita 20
-            if "20" in block:
-                blocks.append(block)
+        time_match = re.search(r"(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})", text)
+        capacity_match = re.search(r"Voľná kapacita\s*-\s*(\d+)", text)
 
-    return blocks
+        time_text = f"{time_match.group(1)} - {time_match.group(2)}" if time_match else "čas neznámy"
+        free_capacity = int(capacity_match.group(1)) if capacity_match else None
+
+        event_key = f"{date.isoformat()}|{time_text}|Hokejka a puk max 20"
+
+        terms.append({
+            "key": event_key,
+            "date": date.strftime("%d.%m.%Y"),
+            "time": time_text,
+            "free_capacity": free_capacity,
+            "raw": text,
+        })
+
+    return terms
+
+def scan_all_days():
+    today = datetime.now().date()
+    all_terms = []
+
+    for i in range(DAYS_AHEAD):
+        day = today + timedelta(days=i)
+        try:
+            all_terms.extend(get_terms_for_day(day))
+        except Exception as e:
+            print(f"Chyba pri dni {day}: {e}")
+
+    return all_terms
 
 def main():
-    if not BOT_TOKEN or not CHAT_ID:
-        print("Missing BOT_TOKEN or CHAT_ID")
-        return
-
     known = load_known()
-    print("Agent beží - anti-spam verzia")
+
+    print("Agent beží - presný API watcher")
 
     while True:
         try:
-            events = fetch_relevant_events()
+            terms = scan_all_days()
 
-            if not events:
-                print("Kontrola OK - nič nové")
+            if not terms:
+                print("Kontrola OK - žiadne termíny max 20")
             else:
-                for event in events:
-                    event_id = make_event_id(event)
+                print(f"Kontrola OK - nájdených termínov: {len(terms)}")
 
-                    if event_id not in known:
-                        known.add(event_id)
-                        save_known(known)
+            for term in terms:
+                if term["key"] not in known:
+                    known.add(term["key"])
+                    save_known(known)
 
-                        msg = (
-                            "🏒 Nový termín Hokejka a puk!\n\n"
-                            f"{event}\n\n"
-                            f"{URL}"
-                        )
+                    capacity = (
+                        f"{term['free_capacity']} voľných miest"
+                        if term["free_capacity"] is not None
+                        else "voľná kapacita nezistená"
+                    )
 
-                        send_telegram(msg)
-                        print("Poslaná nová notifikácia")
-                    else:
-                        print("Už známy termín - neposielam")
+                    msg = (
+                        "🏒 Nový termín: Hokejka a puk - max 20 ľudí\n\n"
+                        f"📅 Dátum: {term['date']}\n"
+                        f"🕕 Čas: {term['time']}\n"
+                        f"🎟️ Kapacita: {capacity}\n\n"
+                        "Rezervuj tu:\n"
+                        "https://petrzalkasportuje.sk/events/arena-drazdiak-korculovanie/"
+                    )
+
+                    send_telegram(msg)
+                    print("Poslaná notifikácia:", term["key"])
 
         except Exception as e:
-            print("Chyba:", e)
+            print("Hlavná chyba:", e)
 
         time.sleep(CHECK_INTERVAL)
 
