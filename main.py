@@ -73,7 +73,7 @@ def get_terms_for_day(date):
             continue
 
         time_match = re.search(r"(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})", text)
-        capacity_match = re.search(r"Voľná kapacita\s*-\s*(\d+)", text)
+        capacity_match = re.search(r"(?:Voľná kapacita\s*-\s*(\d+)|Posledné\s+(\d+)\s+miesta)", text)
 
         time_text = (
             f"{time_match.group(1)} - {time_match.group(2)}"
@@ -81,11 +81,9 @@ def get_terms_for_day(date):
             else "čas neznámy"
         )
 
-        free_capacity = (
-            int(capacity_match.group(1))
-            if capacity_match
-            else None
-        )
+        free_capacity = None
+        if capacity_match:
+            free_capacity = int(capacity_match.group(1) or capacity_match.group(2))
 
         event_key = f"{date.isoformat()}|{time_text}|Hokejka a puk max 20"
 
@@ -94,7 +92,6 @@ def get_terms_for_day(date):
             "date": date.strftime("%d.%m.%Y"),
             "time": time_text,
             "free_capacity": free_capacity,
-            "raw": text,
         })
 
     return terms
@@ -108,8 +105,7 @@ def scan_all_days():
         day = today + timedelta(days=i)
 
         try:
-            day_terms = get_terms_for_day(day)
-            all_terms.extend(day_terms)
+            all_terms.extend(get_terms_for_day(day))
         except Exception as e:
             print(f"Chyba pri dni {day}: {e}")
 
@@ -117,26 +113,19 @@ def scan_all_days():
 
 
 def main():
-    known = load_known()
+    if not BOT_TOKEN or not CHAT_ID:
+        print("Chýba BOT_TOKEN alebo CHAT_ID")
+        return
 
-    print("Agent beží - presný API watcher")
-    print("BOT_TOKEN exists:", bool(BOT_TOKEN))
-    print("CHAT_ID exists:", bool(CHAT_ID))
+    known = load_known()
+    print("Agent beží - Hokejka a puk watcher")
 
     while True:
         try:
             terms = scan_all_days()
-
-            if not terms:
-                print("Kontrola OK - žiadne termíny max 20")
-            else:
-                print(f"Kontrola OK - nájdených termínov: {len(terms)}")
+            print(f"Kontrola OK - nájdených termínov: {len(terms)}")
 
             for term in terms:
-                print("DEBUG TERM:", term)
-                print("KNOWN?", term["key"] in known)
-                print("KEY:", term["key"])
-
                 if term["key"] not in known:
                     known.add(term["key"])
                     save_known(known)
@@ -152,8 +141,7 @@ def main():
                         f"📅 Dátum: {term['date']}\n"
                         f"🕕 Čas: {term['time']}\n"
                         f"🎟️ Kapacita: {capacity}\n\n"
-                        "Rezervuj tu:\n"
-                        "https://petrzalkasportuje.sk/events/arena-drazdiak-korculovanie/"
+                        "Rezervuj tu:"
                     )
 
                     send_telegram(msg)
