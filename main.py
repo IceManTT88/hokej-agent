@@ -12,9 +12,9 @@ CHAT_ID = os.getenv("CHAT_ID")
 AJAX_URL = "https://petrzalkasportuje.sk/wp-admin/admin-ajax.php"
 EVENT_ID = "10024"
 
-CHECK_INTERVAL = 300
+CHECK_INTERVAL = 1800
 DAYS_AHEAD = 45
-STATE_FILE = "known_events.json"
+STATE_FILE = "/data/known_events.json"
 
 
 def send_telegram(text):
