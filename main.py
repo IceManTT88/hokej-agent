@@ -16,6 +16,7 @@ CHECK_INTERVAL = 300
 DAYS_AHEAD = 45
 STATE_FILE = "known_events.json"
 
+
 def send_telegram(text):
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
@@ -36,16 +37,19 @@ def send_telegram(text):
         timeout=15
     )
 
+
 def load_known():
     try:
         with open(STATE_FILE, "r", encoding="utf-8") as f:
             return set(json.load(f))
-    except:
+    except Exception:
         return set()
+
 
 def save_known(known):
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(sorted(list(known)), f, ensure_ascii=False, indent=2)
+
 
 def get_terms_for_day(date):
     payload = {
@@ -71,8 +75,17 @@ def get_terms_for_day(date):
         time_match = re.search(r"(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})", text)
         capacity_match = re.search(r"Voľná kapacita\s*-\s*(\d+)", text)
 
-        time_text = f"{time_match.group(1)} - {time_match.group(2)}" if time_match else "čas neznámy"
-        free_capacity = int(capacity_match.group(1)) if capacity_match else None
+        time_text = (
+            f"{time_match.group(1)} - {time_match.group(2)}"
+            if time_match
+            else "čas neznámy"
+        )
+
+        free_capacity = (
+            int(capacity_match.group(1))
+            if capacity_match
+            else None
+        )
 
         event_key = f"{date.isoformat()}|{time_text}|Hokejka a puk max 20"
 
@@ -86,23 +99,29 @@ def get_terms_for_day(date):
 
     return terms
 
+
 def scan_all_days():
     today = datetime.now().date()
     all_terms = []
 
     for i in range(DAYS_AHEAD):
         day = today + timedelta(days=i)
+
         try:
-            all_terms.extend(get_terms_for_day(day))
+            day_terms = get_terms_for_day(day)
+            all_terms.extend(day_terms)
         except Exception as e:
             print(f"Chyba pri dni {day}: {e}")
 
     return all_terms
 
+
 def main():
     known = load_known()
 
     print("Agent beží - presný API watcher")
+    print("BOT_TOKEN exists:", bool(BOT_TOKEN))
+    print("CHAT_ID exists:", bool(CHAT_ID))
 
     while True:
         try:
@@ -114,6 +133,10 @@ def main():
                 print(f"Kontrola OK - nájdených termínov: {len(terms)}")
 
             for term in terms:
+                print("DEBUG TERM:", term)
+                print("KNOWN?", term["key"] in known)
+                print("KEY:", term["key"])
+
                 if term["key"] not in known:
                     known.add(term["key"])
                     save_known(known)
@@ -140,6 +163,7 @@ def main():
             print("Hlavná chyba:", e)
 
         time.sleep(CHECK_INTERVAL)
+
 
 if __name__ == "__main__":
     main()
